@@ -1,0 +1,26 @@
+{
+  "name": "dmon-base",
+  "version": "1.0.0",
+  "description": "DMON — Daimon Minor Token | Gas fee & micro-transaction token of the DAIMON ecosystem | 100B supply | Deployed on Base",
+  "scripts": {
+    "compile":          "hardhat compile",
+    "test":             "hardhat test",
+    "test:gas":         "REPORT_GAS=true hardhat test",
+    "node":             "hardhat node",
+    "deploy:local":     "hardhat run scripts/deploy.js --network localhost",
+    "deploy:testnet":   "hardhat run scripts/deploy.js --network base-sepolia",
+    "deploy:mainnet":   "hardhat run scripts/deploy.js --network base",
+    "verify:testnet":   "NETWORK=base-sepolia hardhat run scripts/verify.js --network base-sepolia",
+    "verify:mainnet":   "NETWORK=base hardhat run scripts/verify.js --network base",
+    "enable-trading":   "hardhat run scripts/enableTrading.js --network base",
+    "clean":            "hardhat clean"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.19.0",
+    "dotenv": "^16.3.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.0"
+  }
+}

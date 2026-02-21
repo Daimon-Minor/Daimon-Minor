@@ -1,0 +1,168 @@
+name: 🔵 DMON · Base Network CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      network:
+        description: 'Target network'
+        required: true
+        default: 'base-sepolia'
+        type: choice
+        options:
+          - base-sepolia
+          - base
+
+# ─────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ── 1. Lint & Compile ─────────────────────────────────────────────
+  compile:
+    name: 🔨 Compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+      - run: npx hardhat compile
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-contracts
+          path: artifacts/
+
+  # ── 2. Test ───────────────────────────────────────────────────────
+  test:
+    name: 🧪 Unit Tests
+    runs-on: ubuntu-latest
+    needs: compile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: compiled-contracts
+          path: artifacts/
+
+      - name: Run tests
+        run: npx hardhat test
+
+      - name: Gas report
+        run: npx hardhat test
+        env:
+          REPORT_GAS: true
+
+  # ── 3. Security Scan ──────────────────────────────────────────────
+  security:
+    name: 🔒 Security (Slither)
+    runs-on: ubuntu-latest
+    needs: compile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+      - run: npm install -g solc
+
+      - name: Install Slither
+        run: pip3 install slither-analyzer
+
+      - name: Run Slither scan
+        run: slither contracts/DMON.sol --exclude-dependencies --solc-remaps "@openzeppelin=node_modules/@openzeppelin" || true
+
+  # ── 4. Deploy to Base Sepolia (on develop) ────────────────────────
+  deploy-testnet:
+    name: 🔵 Deploy → Base Sepolia
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    if: github.ref == 'refs/heads/develop' || github.event.inputs.network == 'base-sepolia'
+    environment: base-sepolia
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Deploy to Base Sepolia
+        run: npx hardhat run scripts/deploy.js --network base-sepolia
+        env:
+          PRIVATE_KEY:          ${{ secrets.PRIVATE_KEY }}
+          BASE_SEPOLIA_RPC:     ${{ secrets.BASE_SEPOLIA_RPC }}
+          TREASURY_ADDRESS:     ${{ secrets.TREASURY_ADDRESS }}
+          DAIMON_ADDRESS:       ${{ secrets.DAIMON_ADDRESS }}
+          BASESCAN_API_KEY:     ${{ secrets.BASESCAN_API_KEY }}
+
+      - name: Verify on Basescan (Sepolia)
+        run: NETWORK=base-sepolia npx hardhat run scripts/verify.js --network base-sepolia
+        env:
+          BASESCAN_API_KEY: ${{ secrets.BASESCAN_API_KEY }}
+        continue-on-error: true
+
+      - name: Upload deployment info
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-base-sepolia
+          path: deployments/base-sepolia.json
+
+  # ── 5. Deploy to Base Mainnet (on main) ──────────────────────────
+  deploy-mainnet:
+    name: 🚀 Deploy → Base Mainnet
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    if: github.ref == 'refs/heads/main' || github.event.inputs.network == 'base'
+    environment: base-mainnet   # ← requires manual approval in GitHub settings
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Deploy to Base Mainnet
+        run: npx hardhat run scripts/deploy.js --network base
+        env:
+          PRIVATE_KEY:          ${{ secrets.PRIVATE_KEY }}
+          BASE_MAINNET_RPC:     ${{ secrets.BASE_MAINNET_RPC }}
+          TREASURY_ADDRESS:     ${{ secrets.TREASURY_ADDRESS }}
+          DAIMON_ADDRESS:       ${{ secrets.DAIMON_ADDRESS }}
+          BASESCAN_API_KEY:     ${{ secrets.BASESCAN_API_KEY }}
+
+      - name: Verify on Basescan
+        run: NETWORK=base npx hardhat run scripts/verify.js --network base
+        env:
+          BASESCAN_API_KEY: ${{ secrets.BASESCAN_API_KEY }}
+        continue-on-error: true
+
+      - name: Upload deployment info
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-base-mainnet
+          path: deployments/base.json
